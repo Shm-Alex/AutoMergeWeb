@@ -1,6 +1,4 @@
-﻿# README.md для проекта AutoMergeWeb
-
-```markdown
+﻿
 # 🔀 AutoMerge Web
 
 Интерактивный веб-инструмент для трёхстороннего слияния (3-way merge) исходного кода с визуальным разрешением конфликтов.
@@ -235,4 +233,3 @@ MAX_RETRIES = 10
 ---
 
 **Made with ❤️ using ASP.NET Core**
-```
