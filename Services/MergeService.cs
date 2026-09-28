@@ -4,16 +4,37 @@ using System.Linq;
 
 namespace AutoMergeWeb.Services
 {
+    public class MergeResult
+    {
+        public string Merged { get; set; }
+        public List<ConflictInfo> Conflicts { get; set; } = new();
+    }
+
+    public class ConflictInfo
+    {
+        public int Id { get; set; }
+        public List<int> V1LineNumbers { get; set; } = new(); // 1-based номера строк в v1
+        public List<int> V2LineNumbers { get; set; } = new(); // 1-based номера строк в v2
+        public string V1Text { get; set; } = "";
+        public string V2Text { get; set; } = "";
+    }
+
     public class MergeService
     {
-        public string Merge(string original, string version1, string version2)
+        public MergeResult Merge(string original, string version1, string version2)
         {
             var origLines = original.Split('\n');
             var v1Lines = version1.Split('\n');
             var v2Lines = version2.Split('\n');
 
-            var merged = MergeLines(origLines, v1Lines, v2Lines);
-            return string.Join("\n", merged);
+            var conflicts = new List<ConflictInfo>();
+            var merged = MergeLines(origLines, v1Lines, v2Lines, conflicts);
+
+            return new MergeResult
+            {
+                Merged = string.Join("\n", merged),
+                Conflicts = conflicts
+            };
         }
 
         private static bool Eq(string a, string b) => a.Trim() == b.Trim();
@@ -63,7 +84,8 @@ namespace AutoMergeWeb.Services
         }
 
         private static void ProcessRegion(string[] orig, string[] v1, string[] v2, List<string> result,
-            int origStart, int origEnd, int j1Start, int j1End, int j2Start, int j2End)
+            int origStart, int origEnd, int j1Start, int j1End, int j2Start, int j2End,
+            List<ConflictInfo> conflicts, int conflictId)
         {
             if (origStart > origEnd && j1Start > j1End && j2Start > j2End) return;
 
@@ -82,16 +104,27 @@ namespace AutoMergeWeb.Services
                 if (RegionsEqual(region1, region2)) result.AddRange(region1);
                 else
                 {
+                    // Добавляем маркеры конфликта в merged текст
                     result.Add("<<<<<<< Конфликт (версия 1)");
                     result.AddRange(region1);
                     result.Add("=======");
                     result.AddRange(region2);
                     result.Add(">>>>>>> Конфликт (версия 2)");
+
+                    // Сохраняем информацию о конфликте для UI
+                    conflicts.Add(new ConflictInfo
+                    {
+                        Id = conflictId,
+                        V1LineNumbers = Enumerable.Range(j1Start + 1, region1.Length).ToList(),
+                        V2LineNumbers = Enumerable.Range(j2Start + 1, region2.Length).ToList(),
+                        V1Text = string.Join("\n", region1),
+                        V2Text = string.Join("\n", region2)
+                    });
                 }
             }
         }
 
-        private static List<string> MergeLines(string[] orig, string[] v1, string[] v2)
+        private static List<string> MergeLines(string[] orig, string[] v1, string[] v2, List<ConflictInfo> conflicts)
         {
             var lcs1 = LCS(orig, v1);
             var lcs2 = LCS(orig, v2);
@@ -108,15 +141,20 @@ namespace AutoMergeWeb.Services
 
             var result = new List<string>();
             int prevStable = -1, prevJ1 = -1, prevJ2 = -1;
+            int conflictId = 0;
 
             foreach (int s in stable)
             {
-                ProcessRegion(orig, v1, v2, result, prevStable + 1, s - 1, prevJ1 + 1, map1[s] - 1, prevJ2 + 1, map2[s] - 1);
+                ProcessRegion(orig, v1, v2, result, prevStable + 1, s - 1,
+                    prevJ1 + 1, map1[s] - 1, prevJ2 + 1, map2[s] - 1,
+                    conflicts, conflictId++);
                 result.Add(v1[map1[s]]);
                 prevStable = s; prevJ1 = map1[s]; prevJ2 = map2[s];
             }
 
-            ProcessRegion(orig, v1, v2, result, prevStable + 1, orig.Length - 1, prevJ1 + 1, v1.Length - 1, prevJ2 + 1, v2.Length - 1);
+            ProcessRegion(orig, v1, v2, result, prevStable + 1, orig.Length - 1,
+                prevJ1 + 1, v1.Length - 1, prevJ2 + 1, v2.Length - 1,
+                conflicts, conflictId++);
             return result;
         }
     }

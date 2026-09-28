@@ -16,12 +16,11 @@ namespace AutoMergeWeb.Controllers
         {
             return View();
         }
-
         [HttpPost]
         public IActionResult Merge([FromBody] MergeRequest request)
         {
             var result = _mergeService.Merge(request.Original, request.Version1, request.Version2);
-            return Json(new { Merged = result });
+            return Json(result); // Теперь возвращаем MergeResult, а не просто строку
         }
     }
 
