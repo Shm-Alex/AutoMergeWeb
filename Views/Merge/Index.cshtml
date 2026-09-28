@@ -332,12 +332,43 @@
         let currentConflicts = [];
         let v1ConflictLines = [];
         let v2ConflictLines = [];
+        let isScrolling = false; // Флаг для предотвращения циклического скролла
+
+        // Синхронизация скролла между ВСЕМИ полями
+        function syncAllScroll(sourceId) {
+            if (isScrolling) return;
+            isScrolling = true;
+
+            const source = document.getElementById(sourceId);
+            const ids = ['orig', 'v1', 'v2', 'merged'];
+
+            // Вычисляем процент прокрутки источника
+            const sourceScrollHeight = source.scrollHeight - source.clientHeight;
+            const scrollPercent = sourceScrollHeight > 0 ? source.scrollTop / sourceScrollHeight : 0;
+
+            ids.forEach(id => {
+                const target = document.getElementById(id);
+                const lineNums = document.getElementById('ln-' + id);
+
+                if (id !== sourceId) {
+                    // Синхронизируем по проценту (а не по пикселям), чтобы работало при разной высоте контента
+                    const targetScrollHeight = target.scrollHeight - target.clientHeight;
+                    target.scrollTop = scrollPercent * targetScrollHeight;
+                    lineNums.scrollTop = target.scrollTop;
+                } else {
+                    // Для источника просто синхронизируем номера строк
+                    lineNums.scrollTop = source.scrollTop;
+                }
+            });
+
+            // Сбрасываем флаг с небольшой задержкой
+            setTimeout(() => { isScrolling = false; }, 50);
+        }
 
         function updateLineNumbers(textareaId, lineNumId) {
             const el = document.getElementById(textareaId);
             const lineNums = document.getElementById(lineNumId);
 
-            // Для contenteditable div считаем строки по <br> и \n
             let text;
             if (el.tagName === 'TEXTAREA') {
                 text = el.value;
@@ -376,22 +407,20 @@
             }
         }
 
-        function syncScroll(textareaId, lineNumId) {
-            const el = document.getElementById(textareaId);
-            const lineNums = document.getElementById(lineNumId);
-            el.addEventListener('scroll', () => { lineNums.scrollTop = el.scrollTop; });
-        }
+        // Привязываем скролл ко всем полям (orig, v1, v2, merged)
+        ['orig', 'v1', 'v2', 'merged'].forEach(id => {
+            const el = document.getElementById(id);
+            el.addEventListener('scroll', () => syncAllScroll(id));
+        });
 
+        // Обработчики ввода
         ['orig', 'v1', 'v2'].forEach(id => {
             const textarea = document.getElementById(id);
             textarea.addEventListener('input', () => updateLineNumbers(id, 'ln-' + id));
-            syncScroll(id, 'ln-' + id);
         });
 
-        // Для merged div (contenteditable)
         const mergedDiv = document.getElementById('merged');
         mergedDiv.addEventListener('input', () => updateLineNumbers('merged', 'ln-merged'));
-        syncScroll('merged', 'ln-merged');
 
         document.getElementById('orig').addEventListener('input', function () {
             const v1 = document.getElementById('v1');
@@ -407,7 +436,7 @@
 
         async function performMerge() {
             const btn = document.querySelector('.btn-merge');
-            btn.textContent = '⏳ Слияние...';
+            btn.textContent = ' Слияние...';
             btn.disabled = true;
 
             const payload = {
@@ -425,7 +454,6 @@
                 });
                 const data = await response.json();
 
-                // Вставляем текст в contenteditable div (как plain text)
                 mergedDiv.innerText = data.merged;
                 updateLineNumbers('merged', 'ln-merged');
 
@@ -506,14 +534,12 @@
             } else if (choice === 'v2') {
                 replacement = conflict.v2Text;
             } else {
-                // Комбинация: оба варианта с разными цветами
                 replacement = `<span class="v1-text">${escapeHtml(conflict.v1Text)}</span>
     <span class="v2-text">${escapeHtml(conflict.v2Text)}</span>`;
             }
 
             if (mergedText.includes(conflictMarker)) {
                 if (choice === 'combine') {
-                    // Для комбинации вставляем HTML с цветами
                     const before = mergedText.substring(0, mergedText.indexOf(conflictMarker));
                     const after = mergedText.substring(mergedText.indexOf(conflictMarker) + conflictMarker.length);
 
