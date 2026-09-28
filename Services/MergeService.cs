@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace AutoMergeWeb.Services
 {
@@ -13,16 +14,21 @@ namespace AutoMergeWeb.Services
     public class ConflictInfo
     {
         public int Id { get; set; }
-        public List<int> V1LineNumbers { get; set; } = new(); // 1-based номера строк в v1
-        public List<int> V2LineNumbers { get; set; } = new(); // 1-based номера строк в v2
+        public List<int> V1LineNumbers { get; set; } = new();
+        public List<int> V2LineNumbers { get; set; } = new();
         public string V1Text { get; set; } = "";
         public string V2Text { get; set; } = "";
     }
 
     public class MergeService
     {
-        public MergeResult Merge(string original, string version1, string version2)
+        // Настройка сравнения строк
+        private bool _ignoreWhitespace;
+
+        public MergeResult Merge(string original, string version1, string version2, bool ignoreWhitespace = false)
         {
+            _ignoreWhitespace = ignoreWhitespace;
+
             var origLines = original.Split('\n');
             var v1Lines = version1.Split('\n');
             var v2Lines = version2.Split('\n');
@@ -37,9 +43,28 @@ namespace AutoMergeWeb.Services
             };
         }
 
-        private static bool Eq(string a, string b) => a.Trim() == b.Trim();
+        // Сравнение строк с учётом настройки whitespace
+        private  bool Eq(string a, string b)
+        {
+            if (_ignoreWhitespace)
+            {
+                // Полностью игнорируем все пробельные символы
+                return NormalizeWhitespace(a) == NormalizeWhitespace(b);
+            }
+            else
+            {
+                // Только trim (начальные и конечные пробелы)
+                return a.Trim() == b.Trim();
+            }
+        }
 
-        private static List<(int i, int j)> LCS(string[] a, string[] b)
+        // Нормализация: убираем все пробелы и приводим к единому виду
+        private  string NormalizeWhitespace(string s)
+        {
+            return Regex.Replace(s.Trim(), @"\s+", " ");
+        }
+
+        private  List<(int i, int j)> LCS(string[] a, string[] b)
         {
             int n = a.Length, m = b.Length;
             int[,] dp = new int[n + 1, m + 1];
@@ -67,7 +92,7 @@ namespace AutoMergeWeb.Services
             return lcs;
         }
 
-        private static string[] Subarray(string[] arr, int start, int end)
+        private  string[] Subarray(string[] arr, int start, int end)
         {
             if (start > end) return Array.Empty<string>();
             var res = new string[end - start + 1];
@@ -75,7 +100,7 @@ namespace AutoMergeWeb.Services
             return res;
         }
 
-        private static bool RegionsEqual(string[] a, string[] b)
+        private  bool RegionsEqual(string[] a, string[] b)
         {
             if (a.Length != b.Length) return false;
             for (int i = 0; i < a.Length; i++)
@@ -83,7 +108,7 @@ namespace AutoMergeWeb.Services
             return true;
         }
 
-        private static void ProcessRegion(string[] orig, string[] v1, string[] v2, List<string> result,
+        private  void ProcessRegion(string[] orig, string[] v1, string[] v2, List<string> result,
             int origStart, int origEnd, int j1Start, int j1End, int j2Start, int j2End,
             List<ConflictInfo> conflicts, int conflictId)
         {
@@ -104,14 +129,12 @@ namespace AutoMergeWeb.Services
                 if (RegionsEqual(region1, region2)) result.AddRange(region1);
                 else
                 {
-                    // Добавляем маркеры конфликта в merged текст
                     result.Add("<<<<<<< Конфликт (версия 1)");
                     result.AddRange(region1);
                     result.Add("=======");
                     result.AddRange(region2);
                     result.Add(">>>>>>> Конфликт (версия 2)");
 
-                    // Сохраняем информацию о конфликте для UI
                     conflicts.Add(new ConflictInfo
                     {
                         Id = conflictId,
@@ -124,7 +147,7 @@ namespace AutoMergeWeb.Services
             }
         }
 
-        private static List<string> MergeLines(string[] orig, string[] v1, string[] v2, List<ConflictInfo> conflicts)
+        private  List<string> MergeLines(string[] orig, string[] v1, string[] v2, List<ConflictInfo> conflicts)
         {
             var lcs1 = LCS(orig, v1);
             var lcs2 = LCS(orig, v2);

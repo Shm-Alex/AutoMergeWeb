@@ -36,7 +36,6 @@
         height: 250px;
     }
 
-    /* Номера строк */
     .line-numbers {
         width: 40px;
         background: #f6f8fa;
@@ -51,7 +50,6 @@
         overflow: hidden;
     }
 
-    /* Подсветка конфликтных номеров строк */
     .conflict-line-number {
         background: #ffebe9 !important;
         color: #cf222e !important;
@@ -77,7 +75,7 @@
             z-index: 10;
         }
 
-    textarea {
+    textarea, .editable-code {
         flex: 1;
         border: none;
         resize: none;
@@ -90,6 +88,15 @@
         overflow-wrap: normal;
         overflow-x: auto;
     }
+
+    .editable-code {
+        overflow-y: auto;
+        background: #f6f8fa;
+    }
+
+        .editable-code:focus {
+            background: #ffffff;
+        }
 
     .row {
         display: flex;
@@ -144,7 +151,11 @@
         color: white;
     }
 
-    /* Панель конфликтов */
+    .btn-combine {
+        background: #d29922;
+        color: white;
+    }
+
     .conflict-panel {
         margin-top: 20px;
         padding: 16px;
@@ -189,10 +200,75 @@
         color: #6e7781;
         margin-bottom: 4px;
     }
+
+    .settings-box {
+        margin-bottom: 20px;
+        padding: 12px;
+        background: white;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .settings-box label {
+            font-size: 14px;
+            color: #24292f;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .settings-box input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+    /* Цвета для комбинации */
+    .v1-text {
+        color: #0969da;
+        font-weight: 500;
+    }
+
+    .v2-text {
+        color: #8250df;
+        font-weight: 500;
+    }
+
+    .legend {
+        font-size: 12px;
+        color: #6e7781;
+        margin-top: 8px;
+        display: flex;
+        gap: 20px;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+    }
 </style>
 
 <div class="container">
-    <h2 style="text-align: center; margin-bottom: 30px;">🔀 AutoMerge Web</h2>
+    <h2 style="text-align: center; margin-bottom: 30px;"> AutoMerge Web</h2>
+
+    <!-- Настройки -->
+    <div class="settings-box">
+        <label>
+            <input type="checkbox" id="ignoreWhitespace">
+            Игнорировать различия в whitespace (пробелы/отступы) при сравнении с оригиналом
+        </label>
+    </div>
 
     <!-- Original -->
     <div class="editor-box">
@@ -223,12 +299,22 @@
 
     <button class="btn-merge" onclick="performMerge()">⚡ Выполнить слияние (Merge)</button>
 
-    <!-- Merged -->
+    <!-- Merged (теперь contenteditable div) -->
     <div class="editor-box">
-        <div class="editor-header">✅ Результат слияния (Merged)</div>
+        <div class="editor-header">✅ Результат слияния (Merged) — редактируемый</div>
         <div class="code-wrapper" style="height: 350px;">
             <div class="line-numbers" id="ln-merged">1</div>
-            <textarea id="merged" readonly style="background: #f6f8fa;"></textarea>
+            <div id="merged" class="editable-code" contenteditable="true" spellcheck="false"></div>
+        </div>
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #0969da;"></div>
+                <span>Текст из Версии 1</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #8250df;"></div>
+                <span>Текст из Версии 2</span>
+            </div>
         </div>
     </div>
 
@@ -243,219 +329,220 @@
 </div>
 
 <script>
-    // Глобальное состояние конфликтов
-    let currentConflicts = [];
-    let v1ConflictLines = [];
-    let v2ConflictLines = [];
+        let currentConflicts = [];
+        let v1ConflictLines = [];
+        let v2ConflictLines = [];
 
-    // Обновление номеров строк с подсветкой конфликтов
-    function updateLineNumbers(textareaId, lineNumId) {
-        const textarea = document.getElementById(textareaId);
-        const lineNums = document.getElementById(lineNumId);
-        const lines = textarea.value.split('\n').length;
+        function updateLineNumbers(textareaId, lineNumId) {
+            const el = document.getElementById(textareaId);
+            const lineNums = document.getElementById(lineNumId);
 
-        // Определяем конфликтные строки для этого поля
-        const conflictLines = textareaId === 'v1' ? v1ConflictLines :
-                              textareaId === 'v2' ? v2ConflictLines : [];
+            // Для contenteditable div считаем строки по <br> и \n
+            let text;
+            if (el.tagName === 'TEXTAREA') {
+                text = el.value;
+            } else {
+                text = el.innerText;
+            }
 
-        let html = '';
-        for (let i = 1; i <= lines; i++) {
-            const isConflict = conflictLines.includes(i);
-            html += `<div class="${isConflict ? 'conflict-line-number' : ''}"
-                         data-line="${i}"
-                         ${isConflict ? `onclick="showResolveButton(${i}, '${textareaId}')"` : ''}>${i}</div>`;
-        }
-        lineNums.innerHTML = html;
-    }
+            const lines = text.split('\n').length;
 
-    // Показать кнопку "+" при клике на конфликтный номер строки
-    function showResolveButton(lineNum, fieldId) {
-        // Находим конфликт, содержащий эту строку
-        const conflict = currentConflicts.find(c =>
-            (fieldId === 'v1' && c.v1Lines.includes(lineNum)) ||
-            (fieldId === 'v2' && c.v2Lines.includes(lineNum))
-        );
+            const conflictLines = textareaId === 'v1' ? v1ConflictLines :
+                                  textareaId === 'v2' ? v2ConflictLines : [];
 
-        if (!conflict || conflict.resolved) return;
-
-        // Прокручиваем к карточке конфликта
-        const card = document.getElementById(`conflict-${conflict.id}`);
-        if (card) {
-            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            card.style.boxShadow = '0 0 0 3px #cf222e';
-            setTimeout(() => card.style.boxShadow = '', 2000);
-        }
-    }
-
-    // Синхронизация скролла
-    function syncScroll(textareaId, lineNumId) {
-        const textarea = document.getElementById(textareaId);
-        const lineNums = document.getElementById(lineNumId);
-        textarea.addEventListener('scroll', () => { lineNums.scrollTop = textarea.scrollTop; });
-    }
-
-    // Инициализация полей
-    ['orig', 'v1', 'v2', 'merged'].forEach(id => {
-        const textarea = document.getElementById(id);
-        textarea.addEventListener('input', () => updateLineNumbers(id, 'ln-' + id));
-        syncScroll(id, 'ln-' + id);
-    });
-
-    // Автокопирование из orig
-    document.getElementById('orig').addEventListener('input', function () {
-        const v1 = document.getElementById('v1');
-        const v2 = document.getElementById('v2');
-        if (!v1.value.trim() && !v2.value.trim() && this.value.trim() !== '') {
-            v1.value = this.value;
-            v2.value = this.value;
-            updateLineNumbers('v1', 'ln-v1');
-            updateLineNumbers('v2', 'ln-v2');
-        }
-        updateLineNumbers('orig', 'ln-orig');
-    });
-
-    // Выполнение слияния
-    async function performMerge() {
-        const btn = document.querySelector('.btn-merge');
-        btn.textContent = '⏳ Слияние...';
-        btn.disabled = true;
-
-        const payload = {
-            original: document.getElementById('orig').value,
-            version1: document.getElementById('v1').value,
-            version2: document.getElementById('v2').value
-        };
-
-        try {
-            const response = await fetch('/Merge/Merge', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await response.json();
-
-            // Отображаем merged результат
-            document.getElementById('merged').value = data.merged;
-            updateLineNumbers('merged', 'ln-merged');
-
-            // Сохраняем информацию о конфликтах
-            currentConflicts = (data.conflicts || []).map(c => ({
-                ...c,
-                resolved: false
-            }));
-
-            // Обновляем список конфликтных строк для подсветки
-            v1ConflictLines = currentConflicts.flatMap(c => c.v1LineNumbers);
-            v2ConflictLines = currentConflicts.flatMap(c => c.v2LineNumbers);
-
-            // Перерисовываем номера строк с подсветкой
-            updateLineNumbers('v1', 'ln-v1');
-            updateLineNumbers('v2', 'ln-v2');
-
-            // Отображаем панель конфликтов
-            renderConflictPanel();
-
-        } catch (error) {
-            alert('Ошибка при слиянии: ' + error);
-        } finally {
-            btn.textContent = '⚡ Выполнить слияние (Merge)';
-            btn.disabled = false;
-        }
-    }
-
-    // Рендеринг панели конфликтов
-    function renderConflictPanel() {
-        const panel = document.getElementById('conflictPanel');
-        const cardsContainer = document.getElementById('conflictCards');
-
-        const unresolved = currentConflicts.filter(c => !c.resolved);
-
-        if (unresolved.length === 0) {
-            panel.style.display = 'none';
-            return;
+            let html = '';
+            for (let i = 1; i <= lines; i++) {
+                const isConflict = conflictLines.includes(i);
+                html += `<div class="${isConflict ? 'conflict-line-number' : ''}"
+                             data-line="${i}"
+                             ${isConflict ? `onclick="showResolveButton(${i}, '${textareaId}')"` : ''}>${i}</div>`;
+            }
+            lineNums.innerHTML = html;
         }
 
-        panel.style.display = 'block';
-        cardsContainer.innerHTML = '';
+        function showResolveButton(lineNum, fieldId) {
+            const conflict = currentConflicts.find(c =>
+                (fieldId === 'v1' && c.v1LineNumbers.includes(lineNum)) ||
+                (fieldId === 'v2' && c.v2LineNumbers.includes(lineNum))
+            );
 
-        unresolved.forEach(conflict => {
-            const card = document.createElement('div');
-            card.className = 'conflict-card';
-            card.id = `conflict-${conflict.id}`;
+            if (!conflict || conflict.resolved) return;
 
-            card.innerHTML = `
-                <div class="conflict-header">Конфликт #${conflict.id + 1}</div>
-
-                <div class="conflict-lines">👤 Версия 1 — строки ${conflict.v1LineNumbers.join(', ')}</div>
-                <div class="conflict-text">${escapeHtml(conflict.v1Text)}</div>
-
-                <div class="conflict-lines"> Версия 2 — строки ${conflict.v2LineNumbers.join(', ')}</div>
-                <div class="conflict-text">${escapeHtml(conflict.v2Text)}</div>
-
-                <div style="margin-top: 12px;">
-                    <button class="btn-resolve btn-v1" onclick="resolveConflict(${conflict.id}, 'v1')">
-                        ✓ Взять Версию 1
-                    </button>
-                    <button class="btn-resolve btn-v2" onclick="resolveConflict(${conflict.id}, 'v2')">
-                        ✓ Взять Версию 2
-                    </button>
-                </div>
-            `;
-
-            cardsContainer.appendChild(card);
-        });
-    }
-
-    // Разрешение конфликта
-    function resolveConflict(conflictId, choice) {
-        const conflict = currentConflicts.find(c => c.id === conflictId);
-        if (!conflict || conflict.resolved) return;
-
-        const mergedTextarea = document.getElementById('merged');
-        let mergedText = mergedTextarea.value;
-
-        // Формируем точный текст маркеров конфликта (как на сервере)
-        const conflictMarker = `<<<<<<< Конфликт (версия 1)\n${conflict.v1Text}\n=======\n${conflict.v2Text}\n>>>>>>> Конфликт (версия 2)`;
-
-        // Заменяем на выбранный вариант
-        const replacement = choice === 'v1' ? conflict.v1Text : conflict.v2Text;
-
-        if (mergedText.includes(conflictMarker)) {
-            mergedText = mergedText.replace(conflictMarker, replacement);
-            mergedTextarea.value = mergedText;
-
-            // Помечаем конфликт как разрешённый
-            conflict.resolved = true;
-
-            // Обновляем номера строк в merged
-            updateLineNumbers('merged', 'ln-merged');
-
-            // Убираем подсветку разрешённых строк
-            v1ConflictLines = currentConflicts
-                .filter(c => !c.resolved)
-                .flatMap(c => c.v1LineNumbers);
-            v2ConflictLines = currentConflicts
-                .filter(c => !c.resolved)
-                .flatMap(c => c.v2LineNumbers);
-
-            updateLineNumbers('v1', 'ln-v1');
-            updateLineNumbers('v2', 'ln-v2');
-
-            // Перерисовываем панель (убираем разрешённый конфликт)
-            renderConflictPanel();
-
-            // Если все конфликты разрешены — показываем успех
-            if (currentConflicts.every(c => c.resolved)) {
-                mergedTextarea.style.color = '#24292f';
-                mergedTextarea.style.background = '#f0fff4';
+            const card = document.getElementById(`conflict-${conflict.id}`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.boxShadow = '0 0 0 3px #cf222e';
+                setTimeout(() => card.style.boxShadow = '', 2000);
             }
         }
-    }
 
-    // Экранирование HTML
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
+        function syncScroll(textareaId, lineNumId) {
+            const el = document.getElementById(textareaId);
+            const lineNums = document.getElementById(lineNumId);
+            el.addEventListener('scroll', () => { lineNums.scrollTop = el.scrollTop; });
+        }
+
+        ['orig', 'v1', 'v2'].forEach(id => {
+            const textarea = document.getElementById(id);
+            textarea.addEventListener('input', () => updateLineNumbers(id, 'ln-' + id));
+            syncScroll(id, 'ln-' + id);
+        });
+
+        // Для merged div (contenteditable)
+        const mergedDiv = document.getElementById('merged');
+        mergedDiv.addEventListener('input', () => updateLineNumbers('merged', 'ln-merged'));
+        syncScroll('merged', 'ln-merged');
+
+        document.getElementById('orig').addEventListener('input', function () {
+            const v1 = document.getElementById('v1');
+            const v2 = document.getElementById('v2');
+            if (!v1.value.trim() && !v2.value.trim() && this.value.trim() !== '') {
+                v1.value = this.value;
+                v2.value = this.value;
+                updateLineNumbers('v1', 'ln-v1');
+                updateLineNumbers('v2', 'ln-v2');
+            }
+            updateLineNumbers('orig', 'ln-orig');
+        });
+
+        async function performMerge() {
+            const btn = document.querySelector('.btn-merge');
+            btn.textContent = '⏳ Слияние...';
+            btn.disabled = true;
+
+            const payload = {
+                original: document.getElementById('orig').value,
+                version1: document.getElementById('v1').value,
+                version2: document.getElementById('v2').value,
+                ignoreWhitespace: document.getElementById('ignoreWhitespace').checked
+            };
+
+            try {
+                const response = await fetch('/Merge/Merge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+
+                // Вставляем текст в contenteditable div (как plain text)
+                mergedDiv.innerText = data.merged;
+                updateLineNumbers('merged', 'ln-merged');
+
+                currentConflicts = (data.conflicts || []).map(c => ({ ...c, resolved: false }));
+
+                v1ConflictLines = currentConflicts.flatMap(c => c.v1LineNumbers);
+                v2ConflictLines = currentConflicts.flatMap(c => c.v2LineNumbers);
+
+                updateLineNumbers('v1', 'ln-v1');
+                updateLineNumbers('v2', 'ln-v2');
+
+                renderConflictPanel();
+
+            } catch (error) {
+                alert('Ошибка при слиянии: ' + error);
+            } finally {
+                btn.textContent = '⚡ Выполнить слияние (Merge)';
+                btn.disabled = false;
+            }
+        }
+
+        function renderConflictPanel() {
+            const panel = document.getElementById('conflictPanel');
+            const cardsContainer = document.getElementById('conflictCards');
+
+            const unresolved = currentConflicts.filter(c => !c.resolved);
+
+            if (unresolved.length === 0) {
+                panel.style.display = 'none';
+                return;
+            }
+
+            panel.style.display = 'block';
+            cardsContainer.innerHTML = '';
+
+            unresolved.forEach(conflict => {
+                const card = document.createElement('div');
+                card.className = 'conflict-card';
+                card.id = `conflict-${conflict.id}`;
+
+                card.innerHTML = `
+                    <div class="conflict-header">Конфликт #${conflict.id + 1}</div>
+
+                    <div class="conflict-lines">👤 Версия 1 — строки ${conflict.v1LineNumbers.join(', ')}</div>
+                    <div class="conflict-text">${escapeHtml(conflict.v1Text)}</div>
+
+                    <div class="conflict-lines"> Версия 2 — строки ${conflict.v2LineNumbers.join(', ')}</div>
+                    <div class="conflict-text">${escapeHtml(conflict.v2Text)}</div>
+
+                    <div style="margin-top: 12px;">
+                        <button class="btn-resolve btn-v1" onclick="resolveConflict(${conflict.id}, 'v1')">
+                            ✓ Взять Версию 1
+                        </button>
+                        <button class="btn-resolve btn-v2" onclick="resolveConflict(${conflict.id}, 'v2')">
+                            ✓ Взять Версию 2
+                        </button>
+                        <button class="btn-resolve btn-combine" onclick="resolveConflict(${conflict.id}, 'combine')">
+                            🔀 Комбинация (оба варианта)
+                        </button>
+                    </div>
+                `;
+
+                cardsContainer.appendChild(card);
+            });
+        }
+
+        function resolveConflict(conflictId, choice) {
+            const conflict = currentConflicts.find(c => c.id === conflictId);
+            if (!conflict || conflict.resolved) return;
+
+            let mergedText = mergedDiv.innerText;
+
+            const conflictMarker = `<<<<<<< Конфликт (версия 1)\n${conflict.v1Text}\n=======\n${conflict.v2Text}\n>>>>>>> Конфликт (версия 2)`;
+
+            let replacement;
+            if (choice === 'v1') {
+                replacement = conflict.v1Text;
+            } else if (choice === 'v2') {
+                replacement = conflict.v2Text;
+            } else {
+                // Комбинация: оба варианта с разными цветами
+                replacement = `<span class="v1-text">${escapeHtml(conflict.v1Text)}</span>
+    <span class="v2-text">${escapeHtml(conflict.v2Text)}</span>`;
+            }
+
+            if (mergedText.includes(conflictMarker)) {
+                if (choice === 'combine') {
+                    // Для комбинации вставляем HTML с цветами
+                    const before = mergedText.substring(0, mergedText.indexOf(conflictMarker));
+                    const after = mergedText.substring(mergedText.indexOf(conflictMarker) + conflictMarker.length);
+
+                    mergedDiv.innerHTML = escapeHtml(before) + replacement + escapeHtml(after);
+                } else {
+                    mergedDiv.innerText = mergedText.replace(conflictMarker, replacement);
+                }
+
+                conflict.resolved = true;
+
+                updateLineNumbers('merged', 'ln-merged');
+
+                v1ConflictLines = currentConflicts.filter(c => !c.resolved).flatMap(c => c.v1LineNumbers);
+                v2ConflictLines = currentConflicts.filter(c => !c.resolved).flatMap(c => c.v2LineNumbers);
+
+                updateLineNumbers('v1', 'ln-v1');
+                updateLineNumbers('v2', 'ln-v2');
+
+                renderConflictPanel();
+
+                if (currentConflicts.every(c => c.resolved)) {
+                    mergedDiv.style.background = '#f0fff4';
+                }
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 </script>

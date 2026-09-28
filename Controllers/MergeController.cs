@@ -16,11 +16,12 @@ namespace AutoMergeWeb.Controllers
         {
             return View();
         }
+
         [HttpPost]
         public IActionResult Merge([FromBody] MergeRequest request)
         {
-            var result = _mergeService.Merge(request.Original, request.Version1, request.Version2);
-            return Json(result); // Теперь возвращаем MergeResult, а не просто строку
+            var result = _mergeService.Merge(request.Original, request.Version1, request.Version2, request.IgnoreWhitespace);
+            return Json(result);
         }
     }
 
@@ -29,5 +30,6 @@ namespace AutoMergeWeb.Controllers
         public string Original { get; set; } = "";
         public string Version1 { get; set; } = "";
         public string Version2 { get; set; } = "";
+        public bool IgnoreWhitespace { get; set; } = false;
     }
 }
