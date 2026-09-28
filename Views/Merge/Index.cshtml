@@ -1,0 +1,146 @@
+﻿@{
+    ViewData["Title"] = "AutoMerge Tool";
+}
+
+<style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f6f8fa; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .editor-box { margin-bottom: 20px; background: white; border: 1px solid #d0d7de; border-radius: 6px; overflow: hidden; }
+    .editor-header { background: #f6f8fa; padding: 8px 12px; border-bottom: 1px solid #d0d7de; font-weight: 600; font-size: 14px; color: #24292f; }
+    .code-wrapper { display: flex; height: 250px; }
+    .line-numbers {
+        width: 40px; background: #f6f8fa; border-right: 1px solid #d0d7de;
+        color: #6e7781; text-align: right; padding: 10px 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.5; user-select: none; overflow: hidden;
+    }
+    textarea {
+        flex: 1; border: none; resize: none; padding: 10px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.5; outline: none; white-space: pre; overflow-wrap: normal; overflow-x: auto;
+    }
+    .row { display: flex; gap: 20px; }
+    .col { flex: 1; }
+    .btn-merge {
+        display: block; width: 100%; padding: 12px; background: #2da44e; color: white; border: none; border-radius: 6px;
+        font-size: 16px; font-weight: 600; cursor: pointer; margin-bottom: 20px; transition: background 0.2s;
+    }
+    .btn-merge:hover { background: #2c974b; }
+    .conflict { color: #cf222e; font-weight: bold; }
+</style>
+
+<div class="container">
+    <h2 style="text-align: center; margin-bottom: 30px;">🔀 AutoMerge Web</h2>
+
+    <!-- Original -->
+    <div class="editor-box">
+        <div class="editor-header">📄 Исходный файл (Original)</div>
+        <div class="code-wrapper">
+            <div class="line-numbers" id="ln-orig">1</div>
+            <textarea id="orig" placeholder="Вставьте исходный код сюда..."></textarea>
+        </div>
+    </div>
+
+    <!-- V1 and V2 -->
+    <div class="row">
+        <div class="col editor-box">
+            <div class="editor-header">👤 Версия 1 (Programmer 1)</div>
+            <div class="code-wrapper">
+                <div class="line-numbers" id="ln-v1">1</div>
+                <textarea id="v1" placeholder="Изменения 1..."></textarea>
+            </div>
+        </div>
+        <div class="col editor-box">
+            <div class="editor-header">👤 Версия 2 (Programmer 2)</div>
+            <div class="code-wrapper">
+                <div class="line-numbers" id="ln-v2">1</div>
+                <textarea id="v2" placeholder="Изменения 2..."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <button class="btn-merge" onclick="performMerge()">⚡ Выполнить слияние (Merge)</button>
+
+    <!-- Merged -->
+    <div class="editor-box">
+        <div class="editor-header">✅ Результат слияния (Merged)</div>
+        <div class="code-wrapper" style="height: 350px;">
+            <div class="line-numbers" id="ln-merged">1</div>
+            <textarea id="merged" readonly style="background: #f6f8fa;"></textarea>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Функция обновления номеров строк
+    function updateLineNumbers(textareaId, lineNumId) {
+        const textarea = document.getElementById(textareaId);
+        const lineNums = document.getElementById(lineNumId);
+        const lines = textarea.value.split('\n').length;
+        lineNums.innerHTML = Array.from({ length: lines }, (_, i) => i + 1).join('<br>');
+    }
+
+    // Синхронизация скролла номеров строк и textarea
+    function syncScroll(textareaId, lineNumId) {
+        const textarea = document.getElementById(textareaId);
+        const lineNums = document.getElementById(lineNumId);
+        textarea.addEventListener('scroll', () => {
+            lineNums.scrollTop = textarea.scrollTop;
+        });
+    }
+
+    // Инициализация всех полей
+    ['orig', 'v1', 'v2', 'merged'].forEach(id => {
+        const textarea = document.getElementById(id);
+        textarea.addEventListener('input', () => updateLineNumbers(id, 'ln-' + id));
+        syncScroll(id, 'ln-' + id);
+    });
+
+    // Логика автокопирования: если v1 и v2 пустые, копируем orig в оба
+    document.getElementById('orig').addEventListener('input', function () {
+        const v1 = document.getElementById('v1');
+        const v2 = document.getElementById('v2');
+
+        if (!v1.value.trim() && !v2.value.trim() && this.value.trim() !== '') {
+            v1.value = this.value;
+            v2.value = this.value;
+            updateLineNumbers('v1', 'ln-v1');
+            updateLineNumbers('v2', 'ln-v2');
+        }
+        updateLineNumbers('orig', 'ln-orig');
+    });
+
+    // Отправка на сервер для слияния
+    async function performMerge() {
+        const btn = document.querySelector('.btn-merge');
+        btn.textContent = '⏳ Слияние...';
+        btn.disabled = true;
+
+        const payload = {
+            original: document.getElementById('orig').value,
+            version1: document.getElementById('v1').value,
+            version2: document.getElementById('v2').value
+        };
+
+        try {
+            const response = await fetch('/Merge/Merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+
+            document.getElementById('merged').value = data.merged;
+            updateLineNumbers('merged', 'ln-merged');
+
+            // Подсветка конфликтов (простая)
+            const mergedTextarea = document.getElementById('merged');
+            if (data.merged.includes('<<<<<<< Конфликт')) {
+                mergedTextarea.style.color = '#cf222e';
+            } else {
+                mergedTextarea.style.color = '#24292f';
+            }
+        } catch (error) {
+            alert('Ошибка при слиянии: ' + error);
+        } finally {
+            btn.textContent = '⚡ Выполнить слияние (Merge)';
+            btn.disabled = false;
+        }
+    }
+</script>
