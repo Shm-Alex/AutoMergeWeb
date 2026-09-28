@@ -1,29 +1,32 @@
+﻿using AutoMergeWeb.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// 1. РЕГИСТРАЦИЯ СЕРВИСА (Именно это исправляет твою ошибку)
+builder.Services.AddSingleton<MergeService>();
+
+// 2. Добавляем поддержку MVC (Контроллеры и Представления)
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// 3. Настройка конвейера обработки HTTP-запросов
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles(); // Нужно для работы CSS и JS файлов
+
 app.UseRouting();
 
 app.UseAuthorization();
 
-app.MapStaticAssets();
-
+// 4. Настройка маршрутизации: делаем Merge контроллер главным по умолчанию
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}")
-    .WithStaticAssets();
-
+    pattern: "{controller=Merge}/{action=Index}/{id?}");
 
 app.Run();

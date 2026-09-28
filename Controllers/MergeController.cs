@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using AutoMergeWeb.Services;
-using System.Text.Json;
 
 namespace AutoMergeWeb.Controllers
 {
