@@ -129,11 +129,11 @@ namespace AutoMergeWeb.Services
                 if (RegionsEqual(region1, region2)) result.AddRange(region1);
                 else
                 {
-                    result.Add("<<<<<<< Конфликт (версия 1)");
+                    result.Add("<<<<<<< 🔴 КОНФЛИКТ: Версия 1");
                     result.AddRange(region1);
                     result.Add("=======");
                     result.AddRange(region2);
-                    result.Add(">>>>>>> Конфликт (версия 2)");
+                    result.Add(">>>>>>>  🔵 КОНФЛИКТ: Версия 2");
 
                     conflicts.Add(new ConflictInfo
                     {

@@ -526,7 +526,7 @@
 
             let mergedText = mergedDiv.innerText;
 
-            const conflictMarker = `<<<<<<< Конфликт (версия 1)\n${conflict.v1Text}\n=======\n${conflict.v2Text}\n>>>>>>> Конфликт (версия 2)`;
+            const conflictMarker = `<<<<<<< 🔴 КОНФЛИКТ: Версия 1\n${conflict.v1Text}\n=======\n${conflict.v2Text}\n>>>>>>>  🔵 КОНФЛИКТ: Версия 2`;
 
             let replacement;
             if (choice === 'v1') {
